@@ -5,10 +5,19 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:server": "pnpm --filter @redseal/server dev",
     "build": "tsc -b && vite build",
+    "build:server": "pnpm --filter @redseal/server build",
+    "build:all": "pnpm run build && pnpm run build:server",
     "lint": "eslint src vite.config.ts",
+    "lint:server": "pnpm --filter @redseal/server lint",
+    "lint:all": "pnpm run lint && pnpm run lint:server",
+    "typecheck:server": "pnpm --filter @redseal/server typecheck",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:server": "pnpm --filter @redseal/server test",
+    "test:all": "pnpm run test && pnpm run test:server",
+    "seed:server": "pnpm --filter @redseal/server seed"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",

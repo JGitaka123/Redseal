@@ -8,3 +8,8 @@ coverage
 *.log
 .DS_Store
 Thumbs.db
+server/dist
+server/data
+*.db
+*.db-wal
+*.db-shm
