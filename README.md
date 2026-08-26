@@ -1,8 +1,13 @@
-# Red Seal Homes Operations Prototype
+# Red Seal Homes Operations Platform
 
-A polished, responsive demonstration of the proposed Red Seal Homes integrated operations platform. It turns the Phase 1 product brief into a client-ready interactive story using anonymized demonstration data.
+The Red Seal Homes integrated operations platform: a responsive web front end
+demonstrating the Phase 1 product brief, and an authenticated backend API that
+enforces the operational rules behind it.
 
-## Prototype scope
+- `src/` — the React front end (the client-ready demonstration story)
+- `server/` — the operations API ([documentation](server/README.md))
+
+## Front-end scope
 
 - Director overview with collections, receivables, plot availability, title workload, project performance, arrears ageing, and an action centre
 - Pioneer Estate Phase 2 interactive site plan with all 34 numbered plots
@@ -13,7 +18,25 @@ A polished, responsive demonstration of the proposed Red Seal Homes integrated o
 - Management report catalogue
 - Responsive layouts for desktop, tablet, and mobile demonstrations
 
-All names, telephone numbers, transactions, balances, and operational records are fictional demo data. The prototype does not connect to M-Pesa, banks, GIS, SMS, or production databases.
+All names, telephone numbers, transactions, balances, and operational records are
+fictional demo data. Neither the front end nor the API connects to M-Pesa, banks,
+GIS or SMS: those integrations are not built yet, and the payment import endpoint
+is the seam they will plug into.
+
+## Backend scope
+
+- Session authentication with scrypt password hashing, revocable opaque tokens
+  and sign-in lockout
+- Four operational roles — director, sales, finance, registry — enforced per
+  route as capabilities
+- Transactional plot reservation: one active hold per plot, guaranteed under
+  concurrent requests, with automatic expiry of stale holds
+- An append-only receipts ledger with allocation, auto-reconciliation, an
+  exception queue for anything ambiguous, and reversal by mirrored entry
+- Case and title tracking with a fixed stage pipeline and progress derived
+  from it
+- Director overview aggregations, arrears ageing, and an activity feed
+- An append-only audit trail covering every state change
 
 ## Run locally
 
@@ -21,18 +44,29 @@ Requirements: Node.js 20+ and pnpm.
 
 ```bash
 pnpm install
+
+# Front end — http://127.0.0.1:4173
 pnpm dev
+
+# API — http://127.0.0.1:4000
+pnpm seed:server     # first run only: load demonstration data
+pnpm dev:server
 ```
 
-Open `http://127.0.0.1:4173`.
+The front end currently renders its own demonstration data and does not yet call
+the API; wiring the two together is the next piece of work.
 
 ## Quality checks
 
 ```bash
-pnpm build
-pnpm lint
-pnpm test
+pnpm lint:all      # front end + API
+pnpm test:all      # 2 front-end tests, 156 API tests
+pnpm build:all
 ```
+
+Or per package: `pnpm test` / `pnpm test:server`, `pnpm lint` / `pnpm lint:server`,
+`pnpm build` / `pnpm build:server`. CI runs all of it on every push, with the API
+suite exercised on Node 20 and 22.
 
 ## Recommended client demo
 
@@ -44,4 +78,15 @@ pnpm test
 
 ## Production path
 
-This repository currently contains the front-end prototype only. The production build should add PostgreSQL/PostGIS, authenticated APIs, role-based permissions, immutable ledgers, transactional plot locking, encrypted document storage, an audit trail, integration adapters, observability, backups, and a staged data-migration process before real client data is introduced.
+The API now provides authenticated endpoints, role-based permissions, an
+immutable ledger, transactional plot locking and an audit trail. See
+[`server/README.md`](server/README.md) for how each rule is enforced and why.
+
+Still required before real client data is introduced:
+
+- PostgreSQL/PostGIS in place of SQLite — the schema is written to port cleanly,
+  and plot geometry is the reason to make the move
+- Live M-Pesa, bank and SMS adapters behind the existing import seam
+- Encrypted document storage
+- Backup, restore and observability runbooks
+- A staged migration of the existing operational records
