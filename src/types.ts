@@ -10,6 +10,8 @@ export type PlotStatus =
 
 export interface Plot {
   id: number
+  /** Server-side identifier, present only when data came from the API. */
+  apiId?: string
   status: PlotStatus
   size: string
   cashPrice: number

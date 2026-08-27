@@ -36,8 +36,10 @@ import {
   WalletCards,
   X,
 } from 'lucide-react'
-import { activities, cases, formatMoney, initialPlots, projects, statusLabel } from './data'
-import type { Plot, PlotStatus, View } from './types'
+import { formatMoney, projects, statusLabel } from './data'
+import type { Activity, CaseRecord, Plot, PlotStatus, View } from './types'
+import { useOperations } from './operations'
+import Login from './Login'
 
 const navItems: { id: View; label: string; icon: typeof Home }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -47,6 +49,13 @@ const navItems: { id: View; label: string; icon: typeof Home }[] = [
   { id: 'cases', label: 'Cases & titles', icon: FileCheck2 },
   { id: 'reports', label: 'Reports', icon: TrendingUp },
 ]
+
+const ROLE_LABEL: Record<string, string> = {
+  director: 'Director',
+  sales: 'Sales agent',
+  finance: 'Finance officer',
+  registry: 'Registry officer',
+}
 
 const plotStatusOrder: PlotStatus[] = ['available', 'reserved', 'deposit_paid', 'on_instalment', 'fully_paid', 'title_processing']
 
@@ -59,7 +68,7 @@ function Brand({ compact = false }: { compact?: boolean }) {
   )
 }
 
-function Sidebar({ current, onChange, open, onClose }: { current: View; onChange: (view: View) => void; open: boolean; onClose: () => void }) {
+function Sidebar({ current, onChange, open, onClose, account }: { current: View; onChange: (view: View) => void; open: boolean; onClose: () => void; account: { name: string; role: string; initials: string } }) {
   return (
     <>
       {open && <button className="sidebar-scrim" onClick={onClose} aria-label="Close navigation" />}
@@ -90,8 +99,8 @@ function Sidebar({ current, onChange, open, onClose }: { current: View; onChange
         </div>
         <button className="support-link"><Headphones size={18} /> Help & support</button>
         <div className="profile-block">
-          <div className="avatar">MN</div>
-          <div><strong>Mzee Nthiga</strong><span>Director</span></div>
+          <div className="avatar">{account.initials}</div>
+          <div><strong>{account.name}</strong><span>{account.role}</span></div>
           <MoreHorizontal size={18} />
         </div>
       </aside>
@@ -145,7 +154,7 @@ function StatusPill({ status }: { status: string }) {
   return <span className={`status-pill status-pill--${slug}`}><i />{status}</span>
 }
 
-function Overview({ plots, onNavigate, onSelectPlot }: { plots: Plot[]; onNavigate: (view: View) => void; onSelectPlot: (plot: Plot) => void }) {
+function Overview({ plots, activities, onNavigate, onSelectPlot }: { plots: Plot[]; activities: Activity[]; onNavigate: (view: View) => void; onSelectPlot: (plot: Plot) => void }) {
   const available = plots.filter((p) => p.status === 'available').length
   return (
     <div className="view-shell">
@@ -217,6 +226,9 @@ function Overview({ plots, onNavigate, onSelectPlot }: { plots: Plot[]; onNaviga
 
 function PlotMap({ plots, selected, onSelect }: { plots: Plot[]; selected?: Plot; onSelect: (plot: Plot) => void }) {
   const regular = plots.filter((p) => p.id !== 34)
+  // Looked up by plot number rather than by position: the map must not assume
+  // the inventory always contains exactly 34 plots.
+  const largePlot = plots.find((p) => p.id === 34)
   const mapColumns = [regular.slice(19, 26).reverse(), regular.slice(12, 19).reverse(), regular.slice(5, 12).reverse(), regular.slice(0, 5).reverse()]
   return (
     <div className="site-plan">
@@ -226,7 +238,7 @@ function PlotMap({ plots, selected, onSelect }: { plots: Plot[]; selected?: Plot
         {mapColumns.map((column, c) => <div className="plot-column" key={c}>{column.map((plot) => <button key={plot.id} onClick={() => onSelect(plot)} className={`plot ${plot.status} ${selected?.id === plot.id ? 'selected' : ''}`} aria-label={`Plot ${plot.id}, ${statusLabel[plot.status]}`}><span>{plot.id}</span></button>)}</div>)}
         <div className="plot-column bottom-plots">{regular.slice(26, 33).map((plot) => <button key={plot.id} onClick={() => onSelect(plot)} className={`plot ${plot.status} ${selected?.id === plot.id ? 'selected' : ''}`} aria-label={`Plot ${plot.id}, ${statusLabel[plot.status]}`}><span>{plot.id}</span></button>)}</div>
       </div>
-      <button className={`plot plot-34 ${plots[33].status} ${selected?.id === 34 ? 'selected' : ''}`} onClick={() => onSelect(plots[33])}><span>34</span><small>2.1 acres</small></button>
+      {largePlot && <button className={`plot plot-34 ${largePlot.status} ${selected?.id === 34 ? 'selected' : ''}`} onClick={() => onSelect(largePlot)} aria-label={`Plot 34, ${statusLabel[largePlot.status]}`}><span>34</span><small>{largePlot.size}</small></button>}
       <div className="map-road road-bottom"><span>12M ACCESS ROAD</span></div>
       <div className="map-road road-side"><span>ROAD</span></div>
       <div className="direction direction-left">← FROM GOLF COURSE</div>
@@ -263,7 +275,7 @@ function PlotDrawer({ plot, onClose, onReserve }: { plot: Plot; onClose: () => v
   )
 }
 
-function ReserveModal({ plot, onCancel, onConfirm }: { plot: Plot; onCancel: () => void; onConfirm: (name: string, phone: string) => void }) {
+function ReserveModal({ plot, onCancel, onConfirm }: { plot: Plot; onCancel: () => void; onConfirm: (name: string, phone: string) => void | Promise<void> }) {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const valid = name.trim().length > 3 && phone.trim().length > 8
@@ -274,23 +286,28 @@ function ReserveModal({ plot, onCancel, onConfirm }: { plot: Plot; onCancel: () 
       <label>Buyer name<input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Mary Wanjiku" /></label>
       <label>Mobile number<input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07XX XXX XXX" /></label>
       <div className="modal-summary"><span>Reservation expires</span><strong>26 Aug 2026</strong></div>
-      <div className="modal-actions"><button className="secondary-btn" onClick={onCancel}>Cancel</button><button disabled={!valid} className="primary-btn" onClick={() => onConfirm(name.trim(), phone.trim())}>Confirm reservation</button></div>
+      <div className="modal-actions"><button className="secondary-btn" onClick={onCancel}>Cancel</button><button disabled={!valid} className="primary-btn" onClick={() => { void onConfirm(name.trim(), phone.trim()) }}>Confirm reservation</button></div>
     </div></div>
   )
 }
 
-function PlotsView({ plots, setPlots, selected, setSelected, notify }: { plots: Plot[]; setPlots: (plots: Plot[]) => void; selected?: Plot; setSelected: (plot?: Plot) => void; notify: (message: string) => void }) {
+function PlotsView({ plots, onReserve, selected, setSelected, notify }: { plots: Plot[]; onReserve: (plot: Plot, name: string, phone: string) => Promise<Plot | undefined>; selected?: Plot; setSelected: (plot?: Plot) => void; notify: (message: string) => void }) {
   const [filter, setFilter] = useState<'all' | PlotStatus>('all')
   const [reserving, setReserving] = useState(false)
   const counts = useMemo(() => Object.fromEntries(plotStatusOrder.map((status) => [status, plots.filter((p) => p.status === status).length])), [plots])
   const filteredPlots = filter === 'all' ? plots : plots.filter((p) => p.status === filter)
-  const reserve = (name: string, phone: string) => {
+  const reserve = async (name: string, phone: string) => {
     if (!selected) return
-    const updated = plots.map((p) => p.id === selected.id ? { ...p, status: 'reserved' as const, buyer: name, buyerPhone: phone, paid: 0, reservedUntil: '26 Aug 2026' } : p)
-    setPlots(updated)
-    setSelected(updated.find((p) => p.id === selected.id))
-    setReserving(false)
-    notify(`Plot ${selected.id} reserved for ${name}`)
+    const plot = selected
+    try {
+      const updated = await onReserve(plot, name, phone)
+      setSelected(updated)
+      setReserving(false)
+      notify(`Plot ${plot.id} reserved for ${name}`)
+    } catch (error) {
+      setReserving(false)
+      notify(error instanceof Error ? error.message : `Could not reserve plot ${plot.id}`)
+    }
   }
   return (
     <div className="view-shell plots-view">
@@ -320,18 +337,11 @@ function ClientsView({ plots, notify }: { plots: Plot[]; notify: (message: strin
   return <div className="view-shell"><section className="view-title-row"><div><span className="eyebrow">CUSTOMER RECORDS</span><h1>Clients</h1><p>One trusted profile for every Red Seal relationship.</p></div><button className="primary-btn" onClick={() => notify('New client form is ready for the production build')}><Plus size={17} /> Add client</button></section><section className="panel data-panel"><div className="data-toolbar"><label><Search size={17} /><input placeholder="Search by name, phone or ID…" /></label><button className="secondary-btn compact"><Filter size={16} /> All roles</button></div><div className="client-list"><div className="client-row client-head"><span>Client</span><span>Role</span><span>Property</span><span>Account position</span><span /></div>{clients.map((client) => <div className="client-row" key={client.id}><div className="client-name"><span className="avatar">{client.buyer!.split(' ').map((n) => n[0]).join('')}</span><span><strong>{client.buyer}</strong><small>{client.buyerPhone}</small></span></div><span><StatusPill status="Direct buyer" /></span><span><strong>Pioneer Phase 2</strong><small>Plot {client.id}</small></span><span><strong>{formatMoney(client.paid ?? 0)}</strong><small>{statusLabel[client.status]}</small></span><button className="icon-btn"><ChevronRight size={18} /></button></div>)}</div></section></div>
 }
 
-function PaymentsView({ notify }: { notify: (message: string) => void }) {
-  const transactions = [
-    ['QHI8R4M2L9', 'Samuel Muriuki', 'Plot 7', 25000, 'Matched', 'Today, 13:42'],
-    ['QHI7X9K4P2', 'Alice Nyambura', 'Plot 31', 15000, 'Matched', 'Today, 11:18'],
-    ['QHI6T2N7B1', 'Unknown sender', 'No reference', 22500, 'Unmatched', 'Today, 09:04'],
-    ['QHH9A3C8W5', 'Dennis Ngari', 'Plot 33', 50000, 'Matched', 'Yesterday'],
-    ['QHH8D1F6R4', 'Unknown sender', 'PIONEER', 15000, 'Unmatched', 'Yesterday'],
-  ]
+function PaymentsView({ notify, transactions }: { notify: (message: string) => void; transactions: (string | number)[][] }) {
   return <div className="view-shell"><section className="view-title-row"><div><span className="eyebrow">RECONCILIATION</span><h1>Payments</h1><p>Match every shilling from M-Pesa and bank accounts.</p></div><button className="primary-btn" onClick={() => notify('Statement import will connect to live banking in production')}><Plus size={17} /> Import statement</button></section><section className="metrics-grid three"><MetricCard label="Received today" value="KSh 112.5K" trend="8.2%" note="8 transactions" icon={CircleDollarSign} tone="green" /><MetricCard label="Matched automatically" value="94.7%" trend="2.1%" note="this month" icon={Sparkles} tone="blue" /><MetricCard label="Exception queue" value="KSh 47.5K" trend="3 items" note="need review" icon={ReceiptText} tone="gold" /></section><section className="panel data-panel"><div className="panel-head"><div><span className="panel-kicker">LATEST TRANSACTIONS</span><h2>M-Pesa activity</h2></div><button className="secondary-btn compact"><Download size={16} /> Export</button></div><div className="transaction-list"><div className="transaction-row transaction-head"><span>Receipt</span><span>Customer</span><span>Account</span><span>Amount</span><span>Status</span><span>Received</span></div>{transactions.map((t) => <div className="transaction-row" key={String(t[0])}><code>{t[0]}</code><span>{t[1]}</span><span>{t[2]}</span><strong>{formatMoney(Number(t[3]))}</strong><StatusPill status={String(t[4])} /><small>{t[5]}</small></div>)}</div></section></div>
 }
 
-function CasesView() {
+function CasesView({ cases }: { cases: CaseRecord[] }) {
   return <div className="view-shell"><section className="view-title-row"><div><span className="eyebrow">SERVICE DELIVERY</span><h1>Cases & titles</h1><p>Every client can see exactly where their service stands.</p></div><button className="primary-btn"><Plus size={17} /> Open case</button></section><section className="case-callout"><div><FileCheck2 size={23} /></div><span><strong>The walk-in test</strong><p>Find any client’s case in under ten seconds, then explain where it stands and what happens next.</p></span><button className="secondary-btn">Open desk lookup</button></section><section className="panel data-panel"><div className="data-toolbar"><label><Search size={17} /><input placeholder="Search client or case number…" /></label><button className="secondary-btn compact"><Filter size={16} /> All services</button></div><div className="case-list">{cases.map((item) => <button className="case-row" key={item.id}><div className="case-main"><span className="case-icon"><FileText size={19} /></span><span><small>{item.id}</small><strong>{item.client}</strong><em>{item.service}</em></span></div><div><small>Current stage</small><strong>{item.stage}</strong><span className="case-progress"><i style={{ width: `${item.progress}%` }} /></span></div><div><small>Next action</small><strong>{item.next}</strong><span>Officer: {item.officer}</span></div><div><StatusPill status={item.status} /><small>{item.updated}</small></div><ChevronRight size={18} /></button>)}</div></section></div>
 }
 
@@ -347,26 +357,45 @@ function ReportsView() {
 }
 
 export default function App() {
+  const operations = useOperations()
   const [view, setView] = useState<View>('overview')
-  const [plots, setPlots] = useState(initialPlots)
   const [selectedPlot, setSelectedPlot] = useState<Plot | undefined>()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [toast, setToast] = useState<string>()
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(undefined), 3200) }
   const currentTitle = navItems.find((item) => item.id === view)?.label ?? 'Overview'
   const navigate = (next: View) => { setView(next); window.scrollTo({ top: 0, behavior: 'smooth' }) }
+  const { plots, cases, activities, transactions } = operations
+
+  // In live mode nothing renders until there is a session.
+  if (!operations.ready) return <Login onSignIn={operations.signIn} />
+
+  // Show whoever is actually signed in, so the sidebar never claims a
+  // different identity from the session.
+  const account = operations.user
+    ? {
+        name: operations.user.name,
+        role: ROLE_LABEL[operations.user.role],
+        initials: operations.user.name.split(' ').map((part) => part[0]).join('').slice(0, 2),
+      }
+    : { name: 'Mzee Nthiga', role: 'Director', initials: 'MN' }
+
   return (
     <div className="app-shell">
-      <Sidebar current={view} onChange={navigate} open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <Sidebar current={view} onChange={navigate} open={sidebarOpen} onClose={() => setSidebarOpen(false)} account={account} />
       <main className="main-shell">
         <Topbar title={currentTitle} onMenu={() => setSidebarOpen(true)} onNavigate={navigate} />
-        {view === 'overview' && <Overview plots={plots} onNavigate={navigate} onSelectPlot={setSelectedPlot} />}
-        {view === 'plots' && <PlotsView plots={plots} setPlots={setPlots} selected={selectedPlot} setSelected={setSelectedPlot} notify={notify} />}
+        {operations.error && <div className="banner-error" role="alert">{operations.error}</div>}
+        {view === 'overview' && <Overview plots={plots} activities={activities} onNavigate={navigate} onSelectPlot={setSelectedPlot} />}
+        {view === 'plots' && <PlotsView plots={plots} onReserve={operations.reserve} selected={selectedPlot} setSelected={setSelectedPlot} notify={notify} />}
         {view === 'clients' && <ClientsView plots={plots} notify={notify} />}
-        {view === 'payments' && <PaymentsView notify={notify} />}
-        {view === 'cases' && <CasesView />}
+        {view === 'payments' && <PaymentsView notify={notify} transactions={transactions} />}
+        {view === 'cases' && <CasesView cases={cases} />}
         {view === 'reports' && <ReportsView />}
-        <footer><span>Red Seal Homes Operations Platform</span><span>Prototype · Demo data only</span></footer>
+        <footer>
+          <span>Red Seal Homes Operations Platform</span>
+          <span>{operations.mode === 'live' ? `Signed in as ${operations.user?.name}` : 'Prototype · Demo data only'}</span>
+        </footer>
       </main>
       {toast && <div className="toast"><span><Check size={16} /></span>{toast}</div>}
     </div>
