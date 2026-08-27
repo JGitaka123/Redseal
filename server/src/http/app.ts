@@ -27,7 +27,13 @@ export async function buildApp(ctx: AppContext): Promise<FastifyInstance> {
     bodyLimit: 1_048_576,
   })
 
-  await app.register(cors, { origin: corsOrigins(ctx.config), credentials: true })
+  await app.register(cors, {
+    origin: corsOrigins(ctx.config),
+    credentials: true,
+    // Stated explicitly: the default advertises only the methods registered on
+    // the previewed route, which would leave browsers blocking PATCH and DELETE.
+    methods: ['GET', 'HEAD', 'POST', 'PATCH', 'DELETE'],
+  })
 
   app.setErrorHandler((error: unknown, request, reply) => {
     if (error instanceof AppError) {

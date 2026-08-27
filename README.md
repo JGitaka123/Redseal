@@ -23,6 +23,10 @@ fictional demo data. Neither the front end nor the API connects to M-Pesa, banks
 GIS or SMS: those integrations are not built yet, and the payment import endpoint
 is the seam they will plug into.
 
+In live mode the front end reads its plots, cases, receipts and activity from the
+API, and reservations are written through it — so the seven-day hold, the audit
+trail and the concurrency guarantees are the server's, not the browser's.
+
 ## Backend scope
 
 - Session authentication with scrypt password hashing, revocable opaque tokens
@@ -53,14 +57,28 @@ pnpm seed:server     # first run only: load demonstration data
 pnpm dev:server
 ```
 
-The front end currently renders its own demonstration data and does not yet call
-the API; wiring the two together is the next piece of work.
+### Demo mode and live mode
+
+The front end runs in one of two modes, decided by a single environment
+variable (see [`.env.example`](.env.example)):
+
+| `VITE_API_URL` | Mode | Behaviour |
+| --- | --- | --- |
+| unset | **demo** | Self-contained. Bundled demonstration data, no server needed, no sign-in. This is what the client demonstration uses. |
+| set | **live** | Talks to the operations API. Requires a sign-in; every plot, case and receipt comes from the database and every reservation is written to it. |
+
+```bash
+cp .env.example .env      # then run pnpm dev as usual
+```
+
+Demo mode is the default precisely so the client demonstration keeps working on
+a laptop with nothing running behind it.
 
 ## Quality checks
 
 ```bash
 pnpm lint:all      # front end + API
-pnpm test:all      # 2 front-end tests, 156 API tests
+pnpm test:all      # 41 front-end tests, 162 API tests
 pnpm build:all
 ```
 

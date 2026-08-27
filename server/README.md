@@ -163,6 +163,18 @@ curl -s -X POST localhost:4000/api/plots/$PLOT_ID/reservations \
   -d '{"buyerName":"Mary Wanjiku","buyerPhone":"0712 345 678","terms":"instalment"}'
 ```
 
+## Using it from the front end
+
+The React app in `src/` consumes this API when `VITE_API_URL` is set; without it
+the app runs on bundled demonstration data and never calls the server. The client
+lives in `src/api/`, and `src/operations.ts` is the single hook both modes go
+through, so views do not know which mode they are in.
+
+CORS must list the browser origin the app is served from — see `CORS_ORIGINS`.
+The allowed-methods list is set explicitly because the default advertises only
+the methods registered on the previewed route, which leaves browsers blocking
+`PATCH` and `DELETE`.
+
 ## Tests
 
 ```bash
